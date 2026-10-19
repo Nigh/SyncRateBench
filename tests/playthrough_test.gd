@@ -29,7 +29,7 @@ func _run() -> void:
 
 	app.call("enter_project", "osu")
 	await process_frame
-	_press_key(KEY_SPACE)
+	_press_key(app, KEY_SPACE)
 	await process_frame
 	var osu_state = app.get("osu_state")
 	assert(int(osu_state.get("stage")) == OsuState.Stage.GATE, "osu should arm from green gate")
@@ -97,8 +97,11 @@ func _run() -> void:
 	click.global_position = click.position
 	click.button_index = MOUSE_BUTTON_LEFT
 	click.pressed = true
+	app.set("response_guard_until_us", 0)
 	get_root().push_input(click, true)
 	assert(osu_state.expected == 3, "result panel must not swallow clicks on a fading target")
+	get_root().push_input(click, true)
+	assert(osu_state.expected == 3 and osu_state.stage == OsuState.Stage.ACTIVE, "global input guard blocks duplicate GUI-dispatched presses")
 	click.pressed = false
 	get_root().push_input(click, true)
 	# No intervening frame: motion to center, react press, then immediate motion away.
@@ -109,24 +112,29 @@ func _run() -> void:
 	var fast_key := InputEventKey.new()
 	fast_key.keycode = KEY_SPACE
 	fast_key.pressed = true
+	app.set("response_guard_until_us", 0)
 	get_root().push_input(fast_key, true)
 	move.position = app.get("osu_page").get_global_transform_with_canvas() * Vector2(1200, 680)
 	move.global_position = move.position
 	get_root().push_input(move, true)
 	assert(osu_state.stage == OsuState.Stage.ACTIVE and osu_state.expected == 4, "later mouse motion cannot turn a react-key hit into a miss")
 	fast_key.echo = true
+	app.set("response_guard_until_us", 0)
 	get_root().push_input(fast_key, true)
 	assert(osu_state.expected == 4, "held react keys do not fire repeatedly")
 	fast_key.echo = false
 	fast_key.pressed = false
+	app.set("response_guard_until_us", 0)
 	get_root().push_input(fast_key, true)
 	var fourth_center: Vector2 = centers[3]
 	fast_key.pressed = true
+	app.set("response_guard_until_us", 0)
 	get_root().push_input(fast_key, true)
 	move.position = app.get("osu_page").get_global_transform_with_canvas() * fourth_center
 	get_root().push_input(move, true)
 	assert(osu_state.stage == OsuState.Stage.INVALID, "moving onto a target after the key press cannot turn a miss into a hit")
 	fast_key.pressed = false
+	app.set("response_guard_until_us", 0)
 	get_root().push_input(fast_key, true)
 	# Leaving during a hit fade must destroy its node-bound tween and callback.
 	app.call("show_menu")
@@ -139,7 +147,7 @@ func _run() -> void:
 
 	app.call("enter_project", "spheres")
 	await process_frame
-	_press_key(KEY_SPACE)
+	_press_key(app, KEY_SPACE)
 	await process_frame
 	var sphere_state = app.get("sphere_state")
 	assert(int(sphere_state.get("stage")) == SphereState.Stage.GATE)
@@ -153,7 +161,7 @@ func _run() -> void:
 	sphere_aim.set("pitch", 0.0)
 	sphere_aim.call("_apply_camera_rotation")
 	await process_frame
-	_press_key(KEY_SPACE)
+	_press_key(app, KEY_SPACE)
 	await process_frame
 	assert(int(sphere_state.get("stage")) == SphereState.Stage.WAITING, "gate hit should start wait")
 	assert(app.get("audio").last_kind == "start")
@@ -294,31 +302,57 @@ func _run() -> void:
 	var react := InputEventKey.new()
 	react.keycode = KEY_SPACE
 	react.pressed = true
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_reaction_input", react)
 	assert(audio.last_kind == "start")
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_reaction_input", react)
 	assert(audio.last_kind == "error", "false start plays an error")
 	assert(app.get("state").stage == app.get("ReactionState").Stage.INVALID)
 	app.get("state").stage = app.get("ReactionState").Stage.TARGET
 	app.get("state").target_frame_us = Time.get_ticks_usec() - 100_000
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_reaction_input", react)
-	assert(audio.last_kind == "start" and app.get("state").reactions_us.size() == 1)
+	assert(audio.last_kind == "success" and app.get("state").reactions_us.size() == 1)
+	count_before = audio.play_count
+	app.call("_handle_reaction_input", react)
+	assert(audio.play_count == count_before and app.get("state").reactions_us.size() == 1, "duplicate response must not invalidate the next wait")
+	assert(app.get("state").stage == app.get("ReactionState").Stage.NEXT)
+	assert("Finishing round" in app.get("color_hint").text)
+	app.get("score_flight").pause()
+	app.get("score_flight").custom_step(0.49)
+	app.call("_handle_reaction_input", react)
+	assert(app.get("state").stage == app.get("ReactionState").Stage.NEXT)
+	app.get("score_flight").custom_step(0.02)
+	assert(app.get("state").stage == app.get("ReactionState").Stage.WAITING)
+	assert(audio.last_kind == "start")
+	app.set("response_guard_until_us", 0)
+	assert(app.call("_accept_press", react, 1_000_000))
+	assert(not app.call("_accept_press", react, 1_049_999))
+	assert(app.get("response_guard_until_us") == 1_050_000, "ignored inputs do not extend the guard")
+	assert(app.call("_accept_press", react, 1_050_000))
 	app.call("enter_project", "spheres")
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_sphere_input", react)
 	assert(audio.last_kind == "success")
 	app.get("sphere_aim").camera.rotation = Vector3(0, PI * 0.5, 0)
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_sphere_input", react)
 	assert(audio.last_kind == "error" and app.get("sphere_state").stage == app.get("SphereState").Stage.GATE)
 	count_before = audio.play_count
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_sphere_input", react)
 	assert(audio.play_count == count_before, "cooldown inputs stay silent")
 	app.get("sphere_state").stage = app.get("SphereState").Stage.WAITING
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_sphere_input", react)
 	assert(audio.last_kind == "error")
 	app.call("enter_project", "osu")
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_osu_input", react)
 	assert(audio.last_kind == "success")
 	app.get("osu_state").stage = app.get("OsuState").Stage.WAITING
+	app.set("response_guard_until_us", 0)
 	app.call("_handle_osu_input", react)
 	assert(audio.last_kind == "error")
 
@@ -625,7 +659,8 @@ func _run() -> void:
 	quit()
 
 
-func _press_key(keycode: Key) -> void:
+func _press_key(app: Node, keycode: Key) -> void:
+	app.set("response_guard_until_us", 0)
 	var press := InputEventKey.new()
 	press.keycode = keycode
 	press.pressed = true

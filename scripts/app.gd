@@ -22,6 +22,7 @@ const INK := Palette.INK
 const MUTED := Palette.MUTED
 const ACCENT := Palette.PRIMARY
 const DARK := Palette.BASE
+const RESPONSE_GUARD_US := 50_000
 const OSU_RADIUS := 48.0
 const OSU_SPACING := 360.0
 const OSU_FADE_SEC := 0.28
@@ -43,6 +44,7 @@ var state: ReactionState = ReactionState.new()
 var osu_state: OsuState = OsuState.new()
 var sphere_state: SphereState = SphereState.new()
 var scores: ScoreStore = ScoreStore.new()
+var response_guard_until_us := 0
 var page := ""
 var color_background: ColorRect
 var color_title: Label
@@ -221,6 +223,9 @@ func _sync_sens_alt_cursor() -> void:
 
 
 func _input(event: InputEvent) -> void:
+	if not _accept_press(event, Time.get_ticks_usec()):
+		get_viewport().set_input_as_handled()
+		return
 	if page == "osu" and (event is InputEventMouseMotion or event is InputEventMouseButton):
 		# Preserve input-event order; polling the cursor can include motion queued after a key press.
 		osu_cursor_position = osu_page.get_global_transform_with_canvas().affine_inverse() * event.position
@@ -442,10 +447,23 @@ func _restart_project() -> void:
 	enter_project(page)
 
 
+func _accept_press(event: InputEvent, now_us: int) -> bool:
+	if not (event is InputEventKey or event is InputEventMouseButton) or not event.is_pressed():
+		return true
+	if event is InputEventKey and event.echo:
+		return true
+	if now_us < response_guard_until_us:
+		return false
+	response_guard_until_us = now_us + RESPONSE_GUARD_US
+	return true
+
+
 func _handle_reaction_input(event: InputEvent) -> void:
+	var now := Time.get_ticks_usec()
 	if not _reaction_event(event):
 		return
-	var now := Time.get_ticks_usec()
+	if score_flight_active:
+		return
 	var target_was_active := state.stage == ReactionState.Stage.TARGET
 	var samples_before := state.reactions_us.size()
 	if page == "corner" and state.stage == ReactionState.Stage.TARGET:
@@ -459,9 +477,6 @@ func _handle_reaction_input(event: InputEvent) -> void:
 	if state.reactions_us.size() > samples_before:
 		var new_sample_index := state.reactions_us.size() - 1
 		_show_score_flight(new_sample_index, state.reactions_us[new_sample_index])
-	if state.stage == ReactionState.Stage.NEXT:
-		state.start_wait(now, rng)
-		audio.play("start")
 	if page == "corner" and target_was_active and state.stage != ReactionState.Stage.TARGET:
 		corner_watch.defeat_target()
 	_refresh_project()
@@ -469,6 +484,8 @@ func _handle_reaction_input(event: InputEvent) -> void:
 
 func _handle_osu_input(event: InputEvent) -> void:
 	var now := Time.get_ticks_usec()
+	if not _reaction_event(event):
+		return
 	if osu_state.stage == OsuState.Stage.READY or osu_state.stage == OsuState.Stage.INVALID:
 		if _reaction_event(event):
 			_begin_osu_gate()
@@ -530,6 +547,8 @@ func _begin_osu_gate() -> void:
 
 func _handle_sphere_input(event: InputEvent) -> void:
 	var now := Time.get_ticks_usec()
+	if not _reaction_event(event):
+		return
 	if sphere_state.stage == SphereState.Stage.READY or sphere_state.stage == SphereState.Stage.INVALID:
 		if _reaction_event(event):
 			_begin_sphere_gate()
@@ -772,8 +791,8 @@ func _refresh_color() -> void:
 			hint = "PRESS OR CLICK"
 			background = Palette.SUCCESS
 		ReactionState.Stage.NEXT:
-			title = "NEXT TRIAL"
-			hint = "Press when ready."
+			title = "ROUND COMPLETE"
+			hint = "Finishing round... Inputs paused."
 		ReactionState.Stage.INVALID:
 			title = "ROUND INVALID / 0.0 pts"
 			hint = "False start or timeout. Press to retry."
@@ -792,8 +811,8 @@ func _refresh_corner() -> void:
 	var title := "3D REACTION"
 	var hint := "Move the mouse. Click when the enemy appears."
 	if state.stage == ReactionState.Stage.NEXT:
-		title = "NEXT TRIAL"
-		hint = "Click when ready."
+		title = "ROUND COMPLETE"
+		hint = "Finishing round... Inputs paused."
 	elif state.stage == ReactionState.Stage.INVALID:
 		title = "ROUND INVALID / 0.0 pts"
 		hint = "False start, miss, or timeout. Click to retry."
@@ -1511,6 +1530,10 @@ func _finish_score_flight(index: int, score_text: String) -> void:
 	trial_rows[index].text = "%d  %s" % [index + 1, score_text]
 	flight_score_layer.hide()
 	score_flight_active = false
+	if page in ["color", "corner"] and state.stage == ReactionState.Stage.NEXT:
+		state.start_wait(Time.get_ticks_usec(), rng)
+		audio.play("start")
+		_refresh_project()
 
 
 func _update_latest_scores(now_us: int = -1) -> void:

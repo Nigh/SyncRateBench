@@ -141,7 +141,7 @@ The bundled Maple Mono font is used directly as a Godot resource.
   people on different PCs is not very meaningful.
 - 2D Reaction and 3D Reaction use a random 1–4 second delay, five trials, a
   one-second timeout, and false-start invalidation. Each valid non-final trial
-  immediately begins its next random delay. `Time.get_ticks_usec()` measures
+  begins its next random delay after its 0.5-second score animation. `Time.get_ticks_usec()` measures
   engine-side timing; it is not a physical photon-time measurement.
 - All project views and the summary show a left-side five-round result list.
   Its decorative panel ignores mouse input, allowing clicks on overlapping OSU
@@ -155,6 +155,13 @@ The bundled Maple Mono font is used directly as a Godot resource.
   During an active time-based trial a separate LIVE row shows elapsed ms and hides
   when the trial ends. Each valid result appears at screen center before easing
   into its list row over 0.5 seconds.
+- A global 50ms input guard ignores repeated keyboard/button presses before UI
+  or gameplay dispatch. Releases and mouse motion pass through; ignored presses
+  do not extend the window. 3D Aim retains its separate 150ms shot cooldown.
+  In 2D/3D Reaction, successful responses pause response input throughout the
+  0.5-second score flight, showing ROUND COMPLETE / finishing-round feedback.
+  Non-final rounds start their next random wait automatically only after the
+  animation ends. OSU and 3D Aim keep their immediate next gate.
 - Mouse input is not accumulated and VSync is disabled to minimize software
   input-to-frame latency; tearing is an accepted trade-off.
 - A shared native AudioStreamPlayer plays cached, generated PCM cues, with a
