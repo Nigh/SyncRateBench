@@ -11,6 +11,7 @@ A local reaction, aiming and tracking benchmark built with Godot 4 for Windows, 
 Download your platform's package from [Releases](https://github.com/Nigh/SyncRateBench/releases), extract the complete package and launch the application. Keep the bundled resources alongside the executable. The application opens fullscreen; its interface is English-only.
 
 - Select a test from the left side of the menu. `History` and `Settings` are in the Tools section.
+- In `Settings`, use `Display` to switch fullscreen to another monitor. The selection is saved for next launch; a missing display falls back to the system primary. Display numbers follow OS ordering. On Wayland, use your desktop's window-placement shortcut instead.
 - Press `Esc` to return to the menu from a test, or quit from the menu. On a result page, press `R` or click `Retry` to try again.
 - Reaction keys are `Space`, `Z`, `X` and the arrow keys. The left mouse button also responds or fires.
 - Complete all five tests, optionally enter a tag, then click `Save Session` on the menu to save the whole session.
