@@ -64,6 +64,8 @@ var hud_title: Label
 var hud_hint: Label
 var hud_dots: Label
 var hud_footer: Label
+var crosshair: Label
+var reaction_frame: Control
 var summary_text: Label
 var summary_radar: Control
 var trial_rows: Array[Label] = []
@@ -359,6 +361,8 @@ func enter_project(project: String) -> void:
 	_apply_look_sensitivity()
 	_update_trial_list_opacity()
 	$CanvasLayer/HUD.visible = page in ["corner", "spheres", "tracking"]
+	crosshair.visible = page != "corner"
+	reaction_frame.visible = page == "corner"
 	_refresh_project()
 
 
@@ -390,6 +394,8 @@ func enter_sens_lab() -> void:
 	sens_chrome_full = true
 	_set_sens_chrome_visible(false)
 	$CanvasLayer/HUD.show()
+	crosshair.show()
+	reaction_frame.hide()
 	_refresh_sens()
 
 
@@ -1161,7 +1167,7 @@ func _build_hud() -> void:
 	hud_dots.position = Vector2(0, 122)
 	hud_dots.size = Vector2(1280, 30)
 	hud.add_child(hud_dots)
-	var crosshair := _label("+", 28, INK)
+	crosshair = _label("+", 28, INK)
 	crosshair.set_anchors_preset(Control.PRESET_CENTER)
 	crosshair.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	crosshair.grow_vertical = Control.GROW_DIRECTION_BOTH
@@ -1170,6 +1176,24 @@ func _build_hud() -> void:
 	crosshair.offset_right = 20.0
 	crosshair.offset_bottom = 20.0
 	hud.add_child(crosshair)
+	reaction_frame = Control.new()
+	reaction_frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(reaction_frame)
+	reaction_frame.set_anchors_preset(Control.PRESET_CENTER)
+	reaction_frame.offset_left = -320.0
+	reaction_frame.offset_top = -240.0
+	reaction_frame.offset_right = 320.0
+	reaction_frame.offset_bottom = 240.0
+	for corner in [Vector2.ZERO, Vector2(640, 0), Vector2(0, 480), Vector2(640, 480)]:
+		for horizontal in [true, false]:
+			var stroke := ColorRect.new()
+			stroke.color = INK
+			stroke.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			stroke.size = Vector2(28, 2) if horizontal else Vector2(2, 28)
+			stroke.position = corner - Vector2(
+				stroke.size.x if corner.x > 0 else 0.0,
+				stroke.size.y if corner.y > 0 else 0.0)
+			reaction_frame.add_child(stroke)
 	hud_footer = _label("MOUSE: LIMITED LOOK | LMB / REACT KEYS: FIRE | ESC: MENU", 14, INK)
 	hud_footer.position = Vector2(0, 650)
 	hud_footer.size = Vector2(1280, 24)

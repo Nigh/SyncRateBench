@@ -26,7 +26,7 @@ Respond to a color change using a reaction key or the left mouse button. Each tr
 
 ### 3D Reaction
 
-Look around a fixed low-poly room using the mouse, with a 180° horizontal range. After a random 1–4 second wait, a target crosses between covers within a one-second response window. Click while the target is inside the camera's view; aiming the crosshair directly at it is unnecessary. Early input or a timeout invalidates the whole set.
+Look around a fixed low-poly room using the mouse, with a 180° horizontal range. After a random 1–4 second wait, a target crosses between covers within a one-second response window. Click while the target is inside the camera's view; no aiming is required. A large centered 4:3 frame, drawn only with short corner strokes, replaces the crosshair. The frame is a visual cue, not a hit boundary. Early input or a timeout invalidates the whole set.
 
 ### OSU
 
