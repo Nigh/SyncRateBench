@@ -51,6 +51,9 @@ The bundled Maple Mono font is used directly as a Godot resource.
   then times out. A warm ceiling spotlight softly illuminates the three covers
   and target crossing area. After a target round ends, it greys, falls, and fades before
   it is removed.
+  Its HUD replaces the crosshair with a centered 640×480 (4:3) frame using
+  only 28px corner strokes. The frame is decorative, not a hit boundary;
+  3D Aim, Tracking and Sens Lab retain their crosshairs.
 - `OSU` is a 2D sequence test: five rounds. Each round arms when the player
   hits a fixed center green gate (play-area center). Hitting the gate starts a
   random 1–3 second wait, then six numbered circular targets appear (radius
