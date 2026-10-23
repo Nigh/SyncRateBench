@@ -6,6 +6,16 @@ The bundled Maple Mono font is used directly as a Godot resource.
 
 ## Current behavior
 
+- A non-interactive FPS overlay stays at the top right on every page, refreshed
+  four times per second using Godot's live FPS counter. Each result page shows
+  test P95/P99 FPS, calculated as 1,000,000 divided by the nearest-rank P95/P99
+  monotonic frame intervals in microseconds (slow-frame percentiles, not high
+  instantaneous-FPS percentiles). Sampling includes random waits and Tracking
+  preparation, excludes idle/gates, score flights and results, and freezes at
+  completion before the final animation. Retry, invalidation and Tracking focus
+  loss discard samples. Missing samples show --. These diagnostics are display-only;
+  score snapshots, history format and scoring rules stay unchanged.
+  Verify with `godot --headless --path . --script tests/frame_metrics_test.gd`.
 - The application opens fullscreen at a five-test menu. Tests are prominent project-colored
   buttons on the left; History and Settings live in a separate Tools section.
   The right side shows each project's latest valid result from this app run,

@@ -106,6 +106,12 @@ var sens_save_failed := false
 var storage_status: Label
 var summary_time: Label
 var osu_cursor_position := Vector2.ZERO
+var fps_label: Label
+var summary_fps: Label
+var frame_times_us: Array[int] = []
+var frame_last_us := 0
+var fps_refresh_us := 0
+var result_fps_text := ""
 
 const SENS_PANEL_ALPHA_DIM := 0.16
 const SENS_PANEL_ALPHA_FULL := 0.72
@@ -139,12 +145,14 @@ func _ready() -> void:
 	add_child(history_page)
 	history_page.setup(history)
 	history_page.back_requested.connect(show_menu)
+	_build_fps_overlay(app_theme)
 	audio.bind_controls(self)
 	show_menu()
 
 
 func _process(_delta: float) -> void:
 	var now := Time.get_ticks_usec()
+	_update_frame_metrics(now)
 	if page == "sens":
 		_sync_sens_alt_cursor()
 		_update_sens_chrome()
@@ -317,6 +325,9 @@ func enter_project(project: String) -> void:
 	page = project
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	result_snapshot.clear()
+	frame_times_us.clear()
+	frame_last_us = 0
+	result_fps_text = ""
 	tracking_state.reset()
 	tracking.set_active(page == "tracking")
 	if page == "tracking":
@@ -399,6 +410,7 @@ func complete_summary() -> void:
 			average += degrees / 5.0
 		summary_text.text += "\nMEAN ANGULAR ERROR  %.2f deg" % average
 	summary_time.text = "Completed: %s (local time)" % result_snapshot.local_time
+	summary_fps.text = result_fps_text
 	$CanvasLayer/HUD.hide()
 	corner_watch.active = false
 	sphere_aim.active = false
@@ -417,6 +429,13 @@ func _freeze_result() -> void:
 	if samples.size() == 5:
 		var completed_us := Time.get_ticks_usec()
 		result_snapshot = HistoryStore.snapshot(key, samples, scores.look_sens, tracking_state.errors if key == "tracking" else [])
+		if frame_times_us.is_empty():
+			result_fps_text = "TEST FPS  P95 --    P99 --"
+		else:
+			frame_times_us.sort()
+			var p95 := frame_times_us[ceili(frame_times_us.size() * 0.95) - 1]
+			var p99 := frame_times_us[ceili(frame_times_us.size() * 0.99) - 1]
+			result_fps_text = "TEST FPS  P95 %.1f    P99 %.1f" % [1_000_000.0 / p95, 1_000_000.0 / p99]
 		result_cache.add(result_snapshot, completed_us)
 		menu_notice = ""
 
@@ -744,6 +763,11 @@ func _set_sens_panel_alpha(alpha: float) -> void:
 
 
 func _refresh_project() -> void:
+	if (page in ["color", "corner"] and state.stage == ReactionState.Stage.INVALID
+			or page == "osu" and osu_state.stage == OsuState.Stage.INVALID
+			or page == "spheres" and sphere_state.stage == SphereState.Stage.INVALID):
+		frame_times_us.clear()
+		frame_last_us = 0
 	if page == "color" and state.stage == ReactionState.Stage.INVALID:
 		_reset_trial_list()
 	if page == "corner" and state.stage == ReactionState.Stage.INVALID:
@@ -1203,6 +1227,13 @@ func _build_summary() -> void:
 	summary_time.size = Vector2(600, 30)
 	summary_time.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	summary.add_child(summary_time)
+	summary_fps = _label("", 16, MUTED)
+	summary_fps.position = Vector2(270, 440)
+	summary_fps.size = Vector2(600, 26)
+	summary_fps.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	summary_fps.tooltip_text = "FPS from P95/P99 frame times (1,000,000 / microseconds), nearest rank.\nIncludes test waits and Tracking preparation; excludes gates, score flights and results."
+	summary_fps.mouse_filter = Control.MOUSE_FILTER_PASS
+	summary.add_child(summary_fps)
 	var hint := _label("Latest result updated. Save all five fresh tests from Menu.", 14, MUTED)
 	hint.position = Vector2(340, 460)
 	hint.size = Vector2(800, 40)
@@ -1657,6 +1688,8 @@ func _notification(what: int) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	if what == NOTIFICATION_APPLICATION_FOCUS_OUT and page == "tracking" and tracking_state.stage in [TrackingState.Stage.PREPARING, TrackingState.Stage.ACTIVE]:
 		tracking_state.reset()
+		frame_times_us.clear()
+		frame_last_us = 0
 		tracking_state.stage = TrackingState.Stage.INVALID
 		audio.set_tracking_weight(0.0)
 		_reset_trial_list()
@@ -1777,3 +1810,48 @@ class OsuGuideLine extends Control:
 			col.a *= lerpf(0.55, 1.0, along) * alpha_scale
 			var width := lerpf(width_start, width_end, along)
 			draw_line(p0, p1, col, width, true)
+
+
+func _build_fps_overlay(app_theme: Theme) -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 10
+	add_child(layer)
+	fps_label = _label("FPS --", 14, INK)
+	fps_label.theme = app_theme
+	fps_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	fps_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	fps_label.position = Vector2(-200, 12)
+	fps_label.size = Vector2(180, 26)
+	fps_label.add_theme_color_override("font_shadow_color", DARK)
+	fps_label.add_theme_constant_override("shadow_offset_x", 1)
+	fps_label.add_theme_constant_override("shadow_offset_y", 1)
+	layer.add_child(fps_label)
+
+
+func _update_frame_metrics(now_us: int) -> void:
+	if now_us >= fps_refresh_us:
+		fps_label.text = "FPS %d" % Engine.get_frames_per_second()
+		fps_refresh_us = now_us + 250_000
+	if not result_snapshot.is_empty() or summary.visible:
+		frame_last_us = 0
+		return
+	var collecting := false
+	var reset := false
+	match page:
+		"color", "corner":
+			collecting = state.stage in [ReactionState.Stage.WAITING, ReactionState.Stage.TARGET]
+			reset = state.stage in [ReactionState.Stage.READY, ReactionState.Stage.INVALID]
+		"osu":
+			collecting = osu_state.stage in [OsuState.Stage.WAITING, OsuState.Stage.ACTIVE]
+			reset = osu_state.stage in [OsuState.Stage.READY, OsuState.Stage.INVALID]
+		"spheres":
+			collecting = sphere_state.stage in [SphereState.Stage.WAITING, SphereState.Stage.AIMING]
+			reset = sphere_state.stage in [SphereState.Stage.READY, SphereState.Stage.INVALID]
+		"tracking":
+			collecting = tracking_state.stage in [TrackingState.Stage.PREPARING, TrackingState.Stage.ACTIVE]
+			reset = tracking_state.stage in [TrackingState.Stage.READY, TrackingState.Stage.INVALID]
+	if reset:
+		frame_times_us.clear()
+	if collecting and frame_last_us > 0 and now_us > frame_last_us:
+		frame_times_us.append(now_us - frame_last_us)
+	frame_last_us = now_us if collecting else 0
