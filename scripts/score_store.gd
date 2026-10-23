@@ -18,6 +18,8 @@ var score_path := SCORE_PATH
 var look_sens := Camera3DConfig.LOOK_SENS_DEFAULT
 var lab_spacing := 3.0
 var lab_distance := Lab.DISTANCE_DEFAULT
+# Zero follows the system primary display; positive values are screen index + 1.
+var display_screen := 0
 var writable := true
 var error := ""
 
@@ -40,7 +42,7 @@ func load_scores() -> void:
 		if words.size() != 2 or not words[1].is_valid_float() or values.has(words[0]):
 			_protect("Scores are damaged. Existing file is protected.")
 			return
-		if words[0] not in ["data_epoch", "color", "shooter", "osu", "spheres", "tracking", "look_sens", "lab_spacing", "lab_distance"]:
+		if words[0] not in ["data_epoch", "color", "shooter", "osu", "spheres", "tracking", "look_sens", "lab_spacing", "lab_distance", "display_screen"]:
 			_protect("Unsupported scores. Existing file is protected.")
 			return
 		var value := words[1].to_float()
@@ -55,6 +57,11 @@ func load_scores() -> void:
 	if values.is_empty() or values.get("data_epoch", 1.0) not in [1.0, float(DATA_EPOCH)] or float(values.get("tracking", 0.0)) > 100.0:
 		_protect("Unsupported or damaged scores. Existing file is protected.")
 		return
+	var display_value: float = values.get("display_screen", 0.0)
+	if display_value != floor(display_value) or display_value > 2147483647:
+		_protect("Scores are damaged. Existing file is protected.")
+		return
+	display_screen = int(display_value)
 	look_sens = Camera3DConfig.clamp_look_sensitivity(float(values.get("look_sens", look_sens)))
 	lab_distance = clampf(float(values.get("lab_distance", Lab.DISTANCE_DEFAULT)), Lab.DISTANCE_MIN, Lab.DISTANCE_MAX)
 	lab_spacing = clampf(float(values.get("lab_spacing", 3.0)), Lab.SPHERE_RADIUS * 2.0, Lab.max_square_half_at(lab_distance) * 2.0)
@@ -99,6 +106,19 @@ func set_lab_layout(spacing: float, distance: float) -> bool:
 	return false
 
 
+func set_display_screen(value: int) -> bool:
+	if value < 0:
+		return false
+	if display_screen == value:
+		return true
+	var previous := display_screen
+	display_screen = value
+	if save_scores():
+		return true
+	display_screen = previous
+	return false
+
+
 func save_scores() -> bool:
 	if not writable:
 		return false
@@ -106,8 +126,8 @@ func save_scores() -> bool:
 	if file == null:
 		return false
 	file.store_string(
-		"data_epoch %d\nlook_sens %.2f\nlab_spacing %.6f\nlab_distance %.2f\n"
-		% [DATA_EPOCH, look_sens, lab_spacing, lab_distance]
+		"data_epoch %d\nlook_sens %.2f\nlab_spacing %.6f\nlab_distance %.2f\ndisplay_screen %d\n"
+		% [DATA_EPOCH, look_sens, lab_spacing, lab_distance, display_screen]
 	)
 	file.flush()
 	var write_error := file.get_error()

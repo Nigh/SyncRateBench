@@ -16,6 +16,18 @@ The bundled Maple Mono font is used directly as a Godot resource.
   loss discard samples. Missing samples show --. These diagnostics are display-only;
   score snapshots, history format and scoring rules stay unchanged.
   Verify with `godot --headless --path . --script tests/frame_metrics_test.gd`.
+- Settings includes a Display dropdown with System primary and numbered displays
+  showing their resolution, current refresh rate (one decimal Hz; -- if unavailable)
+  and primary status. System primary also shows its refresh rate. Selection temporarily leaves
+  fullscreen, moves the window, then restores fullscreen. Accepted switches
+  are saved; failed saves or rejected moves restore the previous screen and
+  show an error. Startup uses the saved screen, falling back to system primary
+  when its index is unavailable. Display indices follow OS enumeration, not
+  stable hardware identities. Wayland/headless disable selection with an
+  explanation; Wayland users use desktop window-placement shortcuts.
+  `godot --path . --script tests/display_selection_test.gd` exercises native
+  fullscreen switching and save-failure rollback with isolated settings.
+  Its headless variant checks persistence, validation and unavailable-screen fallback.
 - The application opens fullscreen at a five-test menu. Tests are prominent project-colored
   buttons on the left; History and Settings live in a separate Tools section.
   The right side shows each project's latest valid result from this app run,
@@ -183,7 +195,8 @@ The bundled Maple Mono font is used directly as a Godot resource.
   cooldown inputs and Tag typing stay silent. UI controls share hover/press cues;
   changed slider values use a 40 ms sound throttle and programmatic sync is silent.
 - `user://scores.txt` now persists settings only: `look_sens`, `lab_spacing`,
-  `lab_distance` and `data_epoch 2`. Legacy best-score keys are accepted on load
+  `lab_distance`, `display_screen` (0 = system primary, otherwise screen index + 1)
+  and `data_epoch 2`. Legacy best-score keys are accepted on load
   but ignored and omitted on the next settings write. No test result writes this file.
   On first load of valid pre-epoch-2 files, old bests/history are discarded with
   atomic replacements while sensitivity is preserved. Invalid/unreadable/unsupported

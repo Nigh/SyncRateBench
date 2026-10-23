@@ -112,6 +112,9 @@ var frame_times_us: Array[int] = []
 var frame_last_us := 0
 var fps_refresh_us := 0
 var result_fps_text := ""
+var display_option: OptionButton
+var display_status: Label
+var display_switching := false
 
 const SENS_PANEL_ALPHA_DIM := 0.16
 const SENS_PANEL_ALPHA_FULL := 0.72
@@ -132,6 +135,8 @@ func _ready() -> void:
 	_ensure_input_actions()
 	Input.use_accumulated_input = false
 	DisplayServer.window_set_vsync_mode(DisplayServer.VSYNC_DISABLED)
+	if DisplayServer.get_name() not in ["headless", "Wayland"]:
+		DisplayServer.window_set_current_screen(_preferred_display())
 	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
 	_build_menu()
 	_build_color_page()
@@ -1645,6 +1650,21 @@ func _build_settings() -> void:
 	title.position = Vector2(40, 32)
 	title.size = Vector2(1200, 48)
 	settings_page.add_child(title)
+	var display_title := _label("DISPLAY", 18, INK)
+	display_title.position = Vector2(240, 116)
+	display_title.size = Vector2(150, 44)
+	display_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	settings_page.add_child(display_title)
+	display_option = OptionButton.new()
+	display_option.position = Vector2(400, 116)
+	display_option.size = Vector2(640, 44)
+	display_option.add_theme_font_size_override("font_size", 18)
+	display_option.item_selected.connect(_on_display_selected)
+	settings_page.add_child(display_option)
+	display_status = _label("", 14, MUTED)
+	display_status.position = Vector2(160, 168)
+	display_status.size = Vector2(960, 40)
+	settings_page.add_child(display_status)
 	settings_value = _label("", 22, INK)
 	settings_value.position = Vector2(240, 220)
 	settings_value.size = Vector2(800, 44)
@@ -1672,6 +1692,7 @@ func show_settings() -> void:
 	settings_page.show()
 	settings_slider.set_value_no_signal(scores.look_sens)
 	settings_value.text = "LOOK SENSITIVITY  %.2f" % scores.look_sens
+	_refresh_display_options()
 
 
 func show_history() -> void:
@@ -1855,3 +1876,62 @@ func _update_frame_metrics(now_us: int) -> void:
 	if collecting and frame_last_us > 0 and now_us > frame_last_us:
 		frame_times_us.append(now_us - frame_last_us)
 	frame_last_us = now_us if collecting else 0
+
+
+func _preferred_display() -> int:
+	var index := scores.display_screen - 1
+	return index if index >= 0 and index < DisplayServer.get_screen_count() else DisplayServer.get_primary_screen()
+
+
+func _refresh_display_options() -> void:
+	display_option.clear()
+	display_option.add_item("System primary", 0)
+	for index in DisplayServer.get_screen_count():
+		var resolution := DisplayServer.screen_get_size(index)
+		var refresh_rate := DisplayServer.screen_get_refresh_rate(index)
+		var refresh_text := "%.1f Hz" % refresh_rate if refresh_rate > 0.0 else "-- Hz"
+		var primary := index == DisplayServer.get_primary_screen()
+		if primary:
+			display_option.set_item_text(0, "System primary  /  %s" % refresh_text)
+		display_option.add_item("Display %d  /  %d x %d  /  %s%s" % [index + 1, resolution.x, resolution.y, refresh_text, "  /  Primary" if primary else ""], index + 1)
+	display_option.select(scores.display_screen if scores.display_screen <= DisplayServer.get_screen_count() else 0)
+	display_option.disabled = display_switching or DisplayServer.get_name() in ["headless", "Wayland"]
+	display_status.text = "Switches fullscreen immediately. Selection is saved for next launch."
+	if DisplayServer.get_name() == "Wayland":
+		display_status.text = "Wayland controls window placement. Use your desktop's move-to-display shortcut."
+	elif DisplayServer.get_name() == "headless":
+		display_status.text = "Display selection is unavailable in headless mode."
+
+
+func _on_display_selected(index: int) -> void:
+	if display_switching or DisplayServer.get_name() in ["headless", "Wayland"]:
+		return
+	var choice := display_option.get_item_id(index)
+	if choice < 0 or choice > DisplayServer.get_screen_count():
+		_refresh_display_options()
+		return
+	var target := DisplayServer.get_primary_screen() if choice == 0 else choice - 1
+	var previous_screen := DisplayServer.window_get_current_screen()
+	display_switching = true
+	display_option.disabled = true
+	display_status.text = "Switching display..."
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+	await get_tree().process_frame
+	DisplayServer.window_set_current_screen(target)
+	DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var switched := DisplayServer.window_get_current_screen() == target
+	var saved := switched and scores.set_display_screen(choice)
+	if not saved:
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+		await get_tree().process_frame
+		if previous_screen < DisplayServer.get_screen_count():
+			DisplayServer.window_set_current_screen(previous_screen)
+		DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+		await get_tree().process_frame
+		await get_tree().process_frame
+	display_switching = false
+	_refresh_display_options()
+	if not saved:
+		display_status.text = "Could not save display selection. Previous display restored." if switched else "Display switch was not accepted. Previous display restored."

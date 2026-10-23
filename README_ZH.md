@@ -11,6 +11,7 @@
 从 [Releases](https://github.com/Nigh/SyncRateBench/releases) 下载对应平台的发布包，完整解压后运行。请将随包资源保留在可执行文件旁。程序以全屏菜单启动，应用界面仅提供英文。
 
 - 从菜单左侧选择测试；`History` 和 `Settings` 位于 Tools 区域。
+- 在 `Settings` 的 `Display` 下拉框切换全屏使用的显示器。选择会保存，下次启动时恢复；目标屏不可用时回退到系统主屏。显示器编号遵循系统排列。Wayland 下请使用桌面的窗口移屏快捷键。
 - 测试内按 `Esc` 返回菜单，菜单内按 `Esc` 退出。结果页按 `R` 或点击 `Retry` 重试。
 - 反应键为 `Space`、`Z`、`X` 和方向键，鼠标左键也可作答或开火。
 - 完成五项测试后，可填写标签，在菜单点击 `Save Session` 保存整组成绩。
